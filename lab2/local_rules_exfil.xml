@@ -1,0 +1,39 @@
+<!--
+  local_rules_exfil.xml
+  Regla compuesta: posible exfiltración de datos.
+
+  Lógica de detección (2 pasos encadenados con if_matched_sid):
+    1) Regla 100010 (oculta, level 3): detecta un login SSH exitoso
+       (if_sid 5715 = "sshd: authentication success") cuya hora de evento
+       cae fuera del horario laboral (22:00-06:00), usando el atributo
+       <time> de Wazuh. Esta regla por sí sola NO genera alerta visible
+       (level bajo), solo deja "marcada" la sesión sospechosa para que la
+       regla 100011 pueda correlacionarla.
+    2) Regla 100011 (level 14, crítico): se dispara cuando, desde la MISMA
+       IP de origen que disparó la regla 100010, se detecta en el log del
+       firewall/netflow una transferencia saliente (campo bytes_sent del
+       decoder de firewall) superior a 500 MB en una sola conexión, dentro
+       de los 3600s siguientes al login fuera de horario. La combinación
+       "login fuera de horario + transferencia masiva saliente" es el
+       indicador de exfiltración: un acceso legítimo (con credenciales
+       válidas) en horario atípico, seguido de una fuga de datos grande,
+       es estadísticamente muy poco probable que sea actividad normal.
+-->
+<group name="local,exfiltration,">
+
+  <rule id="100010" level="3">
+    <if_sid>5715</if_sid>
+    <time>22:00-06:00</time>
+    <description>Login SSH exitoso fuera de horario laboral desde $(srcip)</description>
+    <group>authentication_success,after_hours,</group>
+  </rule>
+
+  <rule id="100011" level="14" frequency="1" timeframe="3600">
+    <if_matched_sid>100010</if_matched_sid>
+    <field name="bytes_sent" type="osmatch">^[5-9]\d{8,}$|^[1-9]\d{9,}$</field>
+    <same_source_ip />
+    <description>Posible exfiltración de datos: transferencia saliente &gt;500MB desde $(srcip) tras login fuera de horario</description>
+    <group>data_exfiltration,</group>
+  </rule>
+
+</group>
