@@ -274,8 +274,12 @@ sudo cp lab2/local_rules_exfil.xml /var/ossec/etc/rules/
 
 `local_rules_ssh.xml` detecta fuerza bruta SSH: 10 o más fallos de
 autenticación desde la misma IP en una ventana de 60 segundos, usando los
-atributos `frequency` y `timeframe` de Wazuh sobre la regla base 5716
-(`sshd: authentication failed`).
+atributos `frequency` y `timeframe` de Wazuh sobre la regla base 5760
+(`sshd: authentication failed`). El sid exacto puede variar entre versiones
+del ruleset de Wazuh — si en tu instancia no dispara, verifica primero con
+`sudo /var/ossec/bin/wazuh-logtest` pegando una línea real de
+`/var/log/auth.log`; la salida de "Phase 3: Completed filtering (rules)"
+te dice el `id` real que debes usar en `if_matched_sid`.
 
 `local_rules_exfil.xml` es una regla compuesta en dos pasos: primero marca
 (sin generar alerta visible) cualquier login SSH exitoso fuera del horario
