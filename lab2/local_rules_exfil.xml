@@ -25,6 +25,17 @@
        frequency="2" cuenta los 2 eventos correlacionados (el login fuera
        de horario que dispara 100060, más el evento actual de transferencia
        grande); Wazuh exige frequency >= 2, por eso no puede ser 1.
+
+  ATENCIÓN — sid 5715 sin verificar: en local_rules_ssh.xml el sid de
+  "Failed password" resultó ser 5760 en esta versión de Wazuh (v4.14.5),
+  distinto al 5716 documentado en tutoriales viejos. Es muy probable que
+  el sid de "Accepted password" (login exitoso) también haya cambiado.
+  Antes de dar esta regla por buena, verifica con wazuh-logtest:
+    sudo /var/ossec/bin/wazuh-logtest
+  y pega una línea de auth.log de un login SSH exitoso real (o simúlala
+  con: logger -p auth.info -t sshd "Accepted password for ubuntu from
+  45.33.32.156 port 22 ssh2"). La salida de "Phase 3: Completed
+  filtering (rules)" te da el id real — reemplázalo aquí si no es 5715.
 -->
 <group name="local,exfiltration,">
 
