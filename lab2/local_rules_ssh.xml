@@ -2,21 +2,30 @@
   local_rules_ssh.xml
   Regla de correlación: fuerza bruta SSH.
   Se dispara cuando la MISMA IP de origen acumula 10 o más fallos de
-  autenticación SSH (sid base 5760, "sshd: authentication failed") en una
-  ventana de 60 segundos.
-
-  sid 5760 (no 5716): confirmado con `wazuh-logtest` en Wazuh v4.14.5 —
-  esta versión del ruleset de fábrica dispara la regla 5760 para
-  "Failed password", no la 5716 que documentan tutoriales de versiones
-  anteriores. Verificar siempre con wazuh-logtest antes de asumir un sid.
+  autenticación SSH ("Failed password", decoder "sshd") en una ventana de
+  60 segundos.
 
   ID 100050 (no 100001): el local_rules.xml que Wazuh trae de fábrica ya
   define una regla de ejemplo con id 100001, así que se usa un rango
   distinto para evitar el warning "Rule ID is duplicated".
+
+  Por qué NO se usa if_matched_sid sobre 5760: Wazuh ya trae de fábrica una
+  regla nativa de fuerza bruta SSH (id 5763, frequency="8" timeframe="120",
+  en /var/ossec/ruleset/rules/0095-sshd_rules.xml) que también correlaciona
+  sobre la base 5760 ("sshd: authentication failed"). Se confirmó
+  empíricamente con `wazuh-logtest`, alimentando 10 eventos seguidos, que
+  al disparar 5763 en el evento #8 el historial de coincidencias
+  compartido para el sid 5760 se reinicia/consume, y una regla custom
+  encadenada con if_matched_sid nunca llega a acumular sus propios 10
+  eventos (solo ve 2 restantes). Por eso esta regla matchea directamente
+  sobre decoded_as="sshd" + el patrón "Failed password" del mensaje, en
+  vez de depender del historial de la regla base — así mantiene su propio
+  contador de frequency, independiente del de la regla 5763.
 -->
 <group name="local,ssh,">
   <rule id="100050" level="10" frequency="10" timeframe="60">
-    <if_matched_sid>5760</if_matched_sid>
+    <decoded_as>sshd</decoded_as>
+    <match>^Failed password</match>
     <same_source_ip />
     <description>Ataque de fuerza bruta SSH detectado desde $(srcip)</description>
     <group>authentication_failures,brute_force,</group>
