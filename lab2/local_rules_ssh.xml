@@ -5,31 +5,44 @@
   autenticación SSH ("Failed password", decoder "sshd") en una ventana de
   60 segundos.
 
-  ID 100050 (no 100001): el local_rules.xml que Wazuh trae de fábrica ya
-  define una regla de ejemplo con id 100001, así que se usa un rango
+  ID 100050/100051 (no 100001): el local_rules.xml que Wazuh trae de fábrica
+  ya define una regla de ejemplo con id 100001, así que se usa un rango
   distinto para evitar el warning "Rule ID is duplicated".
 
-  Por qué NO se usa if_matched_sid sobre 5760: Wazuh ya trae de fábrica una
-  regla nativa de fuerza bruta SSH (id 5763, frequency="8" timeframe="120",
-  en /var/ossec/ruleset/rules/0095-sshd_rules.xml) que también correlaciona
-  sobre la base 5760 ("sshd: authentication failed"). Se confirmó
-  empíricamente con `wazuh-logtest`, alimentando 10 eventos seguidos, que
-  al disparar 5763 en el evento #8 el historial de coincidencias
-  compartido para el sid 5760 se reinicia/consume, y una regla custom
-  encadenada con if_matched_sid sobre 5760 nunca llega a acumular sus
-  propios 10 eventos (solo ve 2 restantes).
+  Diseño de dos reglas (verificado empíricamente con wazuh-logtest y con
+  inyección real de eventos sobre un manager en Docker — ver GUIA.md §6.2):
 
-  Solución: en vez de depender de la regla nativa 5760, se define un par
-  de reglas propio. 100050 es la regla "atómica" (sin frequency) que
-  detecta cada intento fallido de forma individual, sin disparar alerta
-  por sí sola (level 0). 100051 es la regla de correlación: usa
-  if_matched_sid="100050" para contar solo coincidencias de ESTA regla
-  base (no de 5760/5763), manteniendo así su propio contador de
-  frequency, independiente del de la regla nativa.
+  1) Por qué NO alcanza con una sola regla `frequency`/`if_matched_sid` a
+     secas: Wazuh exige que toda regla con `frequency` tenga
+     if_matched_sid/if_matched_group/if_matched_regex (si no, error "Missing
+     if_matched" al cargar). Y `if_matched_sid` solo cuenta ocurrencias de
+     la regla referenciada cuando ESA regla es la que realmente "gana" como
+     alerta final del evento — no basta con que participe en el árbol de
+     evaluación.
+
+  2) Por qué NO se encadena sobre la regla nativa 5760 ("sshd:
+     authentication failed"): Wazuh ya trae de fábrica una regla de fuerza
+     bruta (id 5763, frequency="8" timeframe="120") que también usa
+     if_matched_sid sobre 5760. Se confirmó inyectando 15 eventos reales
+     que 5763 dispara en el intento #8 y consume/reinicia el historial
+     compartido de 5760 antes de que una regla propia con frequency="10"
+     pueda acumular sus 10 eventos.
+
+  3) Por qué NO alcanza con una regla base "silenciosa" (level="0"): un
+     level="0" nunca gana como alerta final frente a 5760 (level 5), así
+     que if_matched_sid apuntando a esa base nunca ve historial.
+
+  Solución: 100050 es la regla "atómica" — hija directa de 5716 (no de
+  5760, para no competir con 5763) vía if_sid, con level="6" (por encima
+  del level="5" de 5760, así SIEMPRE gana como alerta final del intento
+  individual y queda en el historial propio). 100051 es la regla de
+  correlación real: if_matched_sid="100050" cuenta solo coincidencias de
+  ESTA base propia, con su propio contador de frequency, totalmente
+  independiente del de la regla nativa 5763.
 -->
 <group name="local,ssh,">
-  <rule id="100050" level="0">
-    <decoded_as>sshd</decoded_as>
+  <rule id="100050" level="6">
+    <if_sid>5716</if_sid>
     <match>^Failed password</match>
     <description>Intento fallido de autenticación SSH desde $(srcip)</description>
     <group>authentication_failures,</group>

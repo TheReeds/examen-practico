@@ -589,42 +589,99 @@ README).
 ### 6.2 Reaplicar las reglas del Lab 2 y generar alertas de prueba
 
 El manager de Docker arranca con las reglas por defecto — no trae las
-reglas custom que ya hiciste en el Lab 2. Se copian dentro del contenedor:
+reglas custom del Lab 2. El nombre real del contenedor con esta versión de
+Docker Compose es `single-node-wazuh.manager-1` (confírmalo con
+`docker compose ps` si difiere en tu máquina). Se copian las reglas:
 
 ```bash
-docker cp ~/Trabajos/ExamSeguridad/examen-practico/lab2/local_rules_ssh.xml wazuh-single-node-wazuh.manager-1:/var/ossec/etc/rules/
-docker cp ~/Trabajos/ExamSeguridad/examen-practico/lab2/local_rules_exfil.xml wazuh-single-node-wazuh.manager-1:/var/ossec/etc/rules/
-docker exec wazuh-single-node-wazuh.manager-1 /var/ossec/bin/wazuh-analysisd -t
-docker restart wazuh-single-node-wazuh.manager-1
+docker cp ~/Trabajos/ExamSeguridad/examen-practico/lab2/local_rules_ssh.xml single-node-wazuh.manager-1:/var/ossec/etc/rules/
+docker cp ~/Trabajos/ExamSeguridad/examen-practico/lab2/local_rules_exfil.xml single-node-wazuh.manager-1:/var/ossec/etc/rules/
+docker exec single-node-wazuh.manager-1 /var/ossec/bin/wazuh-analysisd -t
 ```
 
-(el nombre exacto del contenedor puede variar levemente según la versión de
-Docker Compose — confírmalo con `docker compose ps` si el `docker cp`
-falla).
+Si no imprime error, las reglas son válidas. Para recargarlas se usa
+`wazuh-control restart` (reinicio interno de los servicios de Wazuh) en vez
+de `docker restart` — reiniciar el contenedor completo pasa por todo el
+pipeline de arranque de la imagen y en la práctica resultó intermitente
+(`wazuh-apid did not start correctly` en algunos intentos):
 
-El manager, por defecto, ya se monitorea a sí mismo como agente local, así
-que para generar tráfico de alertas basta con inyectar eventos `Failed
-password` directamente dentro del contenedor, con el mismo mecanismo que
-usa `simular_bruteforce.sh` pero apuntando al log que el manager vigila
-dentro de sí mismo:
+```bash
+docker exec single-node-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
+```
+
+Espera ~15 segundos y confirma que los servicios clave quedaron arriba:
+
+```bash
+docker exec single-node-wazuh.manager-1 /var/ossec/bin/wazuh-control status | grep -E "analysisd|logcollector"
+```
+
+**Sobre el diseño de la regla `local_rules_ssh.xml`:** terminó siendo de
+DOS reglas encadenadas (`100050` + `100051`), no una sola. El motivo está
+documentado en el comentario del propio archivo XML — en resumen: Wazuh
+exige que toda regla `frequency` use `if_matched_sid`, y ese mecanismo solo
+cuenta un evento cuando la regla referenciada es la que efectivamente
+"gana" como alerta final; encadenar directo sobre la regla nativa `5760`
+choca con la regla de fuerza bruta que Wazuh ya trae de fábrica (`5763`),
+que consume el mismo historial antes de llegar a nuestro umbral de 10. La
+solución fue darle a `100050` un nivel (6) por encima de `5760` (5) para
+que siempre gane como alerta del intento individual, y encadenar `100051`
+sobre esa base propia — así su contador de frecuencia es independiente del
+nativo. Esto se descubrió empíricamente inyectando eventos reales y
+revisando `alerts.log`, no por lectura de la documentación únicamente.
+
+**Generar tráfico de prueba.** El manager, por defecto, ya se monitorea a
+sí mismo como agente local, pero la imagen de este contenedor no trae el
+comando `logger`, así que el evento se escribe directamente en el archivo
+de log con `echo`. Además, por defecto el manager NO vigila
+`/var/log/auth.log` (ese archivo ni siquiera existe en la imagen base) —
+hay que agregarlo una vez como `<localfile>` en `ossec.conf`:
+
+```bash
+docker exec single-node-wazuh.manager-1 sh -c "
+sed -i '/<location>\/var\/ossec\/logs\/active-responses.log<\/location>/,/<\/localfile>/{
+/<\/localfile>/a\\
+  <localfile>\\
+    <log_format>syslog</log_format>\\
+    <location>/var/log/auth.log</location>\\
+  </localfile>
+}' /var/ossec/etc/ossec.conf
+touch /var/log/auth.log
+"
+docker exec single-node-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
+```
+
+Con eso ya se puede inyectar el tráfico de fuerza bruta simulado. **Importante:
+nunca trunques `/var/log/auth.log` con `>` una vez que el manager ya lo está
+vigilando** — en la práctica eso descuadra el seguimiento interno del
+archivo (offset) y dejan de procesarse los eventos nuevos hasta el próximo
+restart; solo usa `>>` (append):
 
 ```bash
 for i in $(seq 1 15); do
-  docker exec wazuh-single-node-wazuh.manager-1 logger -p auth.warning -t sshd \
-    "Failed password for testuser from 45.33.32.156 port $((RANDOM % 60000 + 1024)) ssh2"
+  PORT=$((RANDOM % 60000 + 1024))
+  TS=$(docker exec single-node-wazuh.manager-1 date "+%b %e %H:%M:%S")
+  docker exec single-node-wazuh.manager-1 sh -c "echo '$TS wazuh.manager sshd[9000]: Failed password for testuser from 45.33.32.156 port $PORT ssh2' >> /var/log/auth.log"
   sleep 0.4
 done
 ```
 
-Espera unos segundos y confirma que la regla `100051` (fuerza bruta) se
+Espera unos 15 segundos y confirma que la regla `100051` (fuerza bruta) se
 disparó:
 
 ```bash
-docker exec wazuh-single-node-wazuh.manager-1 tail -n 50 /var/ossec/logs/alerts/alerts.log | grep -A5 100051
+docker exec single-node-wazuh.manager-1 sh -c "tail -n 100 /var/ossec/logs/alerts/alerts.log" | grep -A5 100051
 ```
 
-Con esto ya hay datos reales en el índice `wazuh-alerts-*` para construir
-las visualizaciones del dashboard.
+Deberías ver `Rule: 100051 (level 10) -> 'Ataque de fuerza bruta SSH
+detectado desde 45.33.32.156'`. Con esto ya hay datos reales en el índice
+`wazuh-alerts-*` para construir las visualizaciones del dashboard.
+
+La evidencia oficial del Lab 2 (`SCR-2.3`) ya quedó capturada y pusheada
+desde la EC2 — no hace falta rehacerla. Esta corrida en Docker es solo para
+alimentar de datos reales al Lab 4; guarda este resultado como
+`lab4/evidencias/SCR-4.0b_alerta_generada.png` (evidencia de soporte,
+mostrando que la fuente de datos del dashboard tiene alertas reales antes
+de construir las visualizaciones).
 
 ### 6.3 Conectar la fuente de datos
 
