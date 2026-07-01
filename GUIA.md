@@ -283,8 +283,16 @@ de fuerza bruta (`5763`, `frequency="8" timeframe="120"`) que correlaciona
 sobre esa misma base — se confirmó con `wazuh-logtest` que al disparar
 `5763` en el 8vo evento, el historial compartido de esa base se
 reinicia, y una regla custom encadenada nunca llega a sus propios 10.
-Por eso `100050` matchea directamente sobre el decoder, manteniendo su
-propio contador independiente del de `5763`.
+
+En Wazuh, toda regla con `frequency`/`timeframe` debe declarar de qué
+regla cuenta las coincidencias vía `if_matched_sid` — no basta con que
+la propia regla tenga las condiciones de match (`wazuh-analysisd -t`
+lo rechaza con "Missing if_matched"). Por eso el archivo define dos
+reglas propias: `100050` es la base "atómica" (level 0, sin frequency)
+que detecta cada `Failed password` individual sobre `decoded_as="sshd"`,
+y `100051` es la regla de correlación, que usa
+`if_matched_sid="100050"` para contar solo sobre esa base propia —
+manteniendo así su contador independiente del de `5763`.
 
 Si en tu instancia el sid base de "Failed password" no es `5760`, no
 afecta a esta regla (ya no depende de él), pero si necesitas verificarlo
@@ -340,15 +348,17 @@ sudo bash lab2/simular_bruteforce.sh 45.33.32.156 15
 ```
 
 El primer argumento es la IP atacante simulada y el segundo el número de
-intentos (15 supera el umbral de 10 configurado en la regla 100050). Espera
+intentos (15 supera el umbral de 10 configurado en la regla 100051). Espera
 unos segundos a que Wazuh procese los eventos y revisa el log de alertas:
 
 ```bash
-sudo tail -n 50 /var/ossec/logs/alerts/alerts.log | grep -A 5 "100050"
+sudo tail -n 50 /var/ossec/logs/alerts/alerts.log | grep -A 5 "100051"
 ```
 
-Deberías ver una entrada con `"rule":{"id":"100050"...` y la IP de origen
-`45.33.32.156` (o la que hayas pasado como argumento).
+Deberías ver una entrada con `"rule":{"id":"100051"...` y la IP de origen
+`45.33.32.156` (o la que hayas pasado como argumento). Es normal ver
+también varias entradas de `100050` en el log crudo (son las coincidencias
+individuales de la base, level 0) — la alerta visible es la de `100051`.
 
 📸 Captura ese fragmento del log como
 `lab2/evidencias/SCR-2.3_alerta_disparada.png`.

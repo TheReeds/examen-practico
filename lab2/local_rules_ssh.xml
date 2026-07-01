@@ -16,16 +16,27 @@
   empíricamente con `wazuh-logtest`, alimentando 10 eventos seguidos, que
   al disparar 5763 en el evento #8 el historial de coincidencias
   compartido para el sid 5760 se reinicia/consume, y una regla custom
-  encadenada con if_matched_sid nunca llega a acumular sus propios 10
-  eventos (solo ve 2 restantes). Por eso esta regla matchea directamente
-  sobre decoded_as="sshd" + el patrón "Failed password" del mensaje, en
-  vez de depender del historial de la regla base — así mantiene su propio
-  contador de frequency, independiente del de la regla 5763.
+  encadenada con if_matched_sid sobre 5760 nunca llega a acumular sus
+  propios 10 eventos (solo ve 2 restantes).
+
+  Solución: en vez de depender de la regla nativa 5760, se define un par
+  de reglas propio. 100050 es la regla "atómica" (sin frequency) que
+  detecta cada intento fallido de forma individual, sin disparar alerta
+  por sí sola (level 0). 100051 es la regla de correlación: usa
+  if_matched_sid="100050" para contar solo coincidencias de ESTA regla
+  base (no de 5760/5763), manteniendo así su propio contador de
+  frequency, independiente del de la regla nativa.
 -->
 <group name="local,ssh,">
-  <rule id="100050" level="10" frequency="10" timeframe="60">
+  <rule id="100050" level="0">
     <decoded_as>sshd</decoded_as>
     <match>^Failed password</match>
+    <description>Intento fallido de autenticación SSH desde $(srcip)</description>
+    <group>authentication_failures,</group>
+  </rule>
+
+  <rule id="100051" level="10" frequency="10" timeframe="60">
+    <if_matched_sid>100050</if_matched_sid>
     <same_source_ip />
     <description>Ataque de fuerza bruta SSH detectado desde $(srcip)</description>
     <group>authentication_failures,brute_force,</group>
