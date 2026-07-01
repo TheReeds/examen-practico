@@ -243,7 +243,7 @@ El instalador oficial de Wazuh levanta en un solo paso el Manager, el
 Indexer (OpenSearch) y el Dashboard:
 
 ```bash
-curl -sO https://packages.wazuh.com/4.x/wazuh-install.sh
+curl -sO https://packages.wazuh.com/4.14/wazuh-install.sh
 sudo bash ./wazuh-install.sh -a
 ```
 
