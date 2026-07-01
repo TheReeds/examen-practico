@@ -89,6 +89,7 @@ def graficar_heatmap_http(registros):
 
     df = pd.DataFrame(matriz).T.reindex(columns=codigos_interes, fill_value=0)
     df = df.reindex(range(24), fill_value=0).sort_index()
+    df = df.fillna(0).astype(int)
 
     plt.figure(figsize=(8, 10))
     sns.heatmap(df, annot=True, fmt="d", cmap="YlOrRd")
