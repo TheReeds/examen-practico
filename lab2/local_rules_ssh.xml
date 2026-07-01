@@ -4,9 +4,13 @@
   Se dispara cuando la MISMA IP de origen acumula 10 o más fallos de
   autenticación SSH (sid base 5716, "sshd: authentication failed") en una
   ventana de 60 segundos.
+
+  ID 100050 (no 100001): el local_rules.xml que Wazuh trae de fábrica ya
+  define una regla de ejemplo con id 100001, así que se usa un rango
+  distinto para evitar el warning "Rule ID is duplicated".
 -->
 <group name="local,ssh,">
-  <rule id="100001" level="10" frequency="10" timeframe="60">
+  <rule id="100050" level="10" frequency="10" timeframe="60">
     <if_matched_sid>5716</if_matched_sid>
     <same_source_ip />
     <description>Ataque de fuerza bruta SSH detectado desde $(srcip)</description>

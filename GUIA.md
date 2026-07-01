@@ -295,7 +295,17 @@ xmllint --noout /var/ossec/etc/rules/local_rules_exfil.xml && echo OK
 📸 Captura la salida de ambas validaciones (las dos líneas `OK`) como
 `lab2/evidencias/SCR-2.2_reglas_validadas.png`.
 
-Reinicia Wazuh para que cargue las reglas nuevas:
+`xmllint` solo valida que el XML esté bien formado, no que Wazuh lo acepte
+(errores como IDs duplicados o atributos fuera de rango pasan `xmllint` sin
+problema). Por eso conviene probar también con el propio motor de reglas de
+Wazuh antes de reiniciar el servicio:
+
+```bash
+sudo /var/ossec/bin/wazuh-analysisd -t
+```
+
+Si no imprime nada (o solo un `WARNING`, no un `ERROR`/`CRITICAL`), está
+listo para reiniciar:
 
 ```bash
 sudo systemctl restart wazuh-manager
@@ -304,24 +314,26 @@ sudo systemctl status wazuh-manager
 
 ### 4.3 Probar la regla de fuerza bruta
 
-El repositorio incluye `lab2/simular_bruteforce.sh`, que lanza varios
-intentos de login SSH fallidos contra la propia instancia para disparar la
-regla 100001.
+El repositorio incluye `lab2/simular_bruteforce.sh` (provisto por el curso),
+que inyecta directamente en el syslog, vía `logger`, varios eventos de
+`Failed password` simulando una IP atacante — no necesita SSH real ni
+credenciales, solo que Wazuh esté leyendo `/var/log/auth.log`.
 
 ```bash
 chmod +x lab2/simular_bruteforce.sh
-./lab2/simular_bruteforce.sh ubuntu localhost 12
+sudo bash lab2/simular_bruteforce.sh 45.33.32.156 15
 ```
 
-Espera unos segundos a que Wazuh procese los eventos y revisa el log de
-alertas:
+El primer argumento es la IP atacante simulada y el segundo el número de
+intentos (15 supera el umbral de 10 configurado en la regla 100050). Espera
+unos segundos a que Wazuh procese los eventos y revisa el log de alertas:
 
 ```bash
-sudo tail -n 50 /var/ossec/logs/alerts/alerts.log | grep -A 5 "100001"
+sudo tail -n 50 /var/ossec/logs/alerts/alerts.log | grep -A 5 "100050"
 ```
 
-Deberías ver una entrada con `"rule":{"id":"100001"...` y la IP de origen
-(en este caso `127.0.0.1`, ya que el ataque es contra localhost).
+Deberías ver una entrada con `"rule":{"id":"100050"...` y la IP de origen
+`45.33.32.156` (o la que hayas pasado como argumento).
 
 📸 Captura ese fragmento del log como
 `lab2/evidencias/SCR-2.3_alerta_disparada.png`.
