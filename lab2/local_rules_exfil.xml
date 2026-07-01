@@ -18,6 +18,9 @@
        indicador de exfiltración: un acceso legítimo (con credenciales
        válidas) en horario atípico, seguido de una fuga de datos grande,
        es estadísticamente muy poco probable que sea actividad normal.
+       frequency="2" cuenta los 2 eventos correlacionados (el login fuera
+       de horario que dispara 100010, más el evento actual de transferencia
+       grande); Wazuh exige frequency >= 2, por eso no puede ser 1.
 -->
 <group name="local,exfiltration,">
 
@@ -28,7 +31,7 @@
     <group>authentication_success,after_hours,</group>
   </rule>
 
-  <rule id="100011" level="14" frequency="1" timeframe="3600">
+  <rule id="100011" level="14" frequency="2" timeframe="3600">
     <if_matched_sid>100010</if_matched_sid>
     <field name="bytes_sent" type="osmatch">^[5-9]\d{8,}$|^[1-9]\d{9,}$</field>
     <same_source_ip />
