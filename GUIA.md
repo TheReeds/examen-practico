@@ -1,28 +1,37 @@
 # Guía paso a paso — Examen Práctico Seguridad Informática
 
-Esta guía explica, paso a paso, cómo montar el entorno completo en AWS y
-ejecutar los 4 laboratorios de principio a fin. Está escrita para que
-cualquier persona (no solo el autor) pueda seguirla y reproducir el examen
-en una instancia EC2 nueva, entendiendo qué hace cada comando y qué
-resultado esperar.
+Esta guía explica, paso a paso, cómo montar el entorno completo y ejecutar
+los 4 laboratorios de principio a fin. Está escrita para que cualquier
+persona (no solo el autor) pueda seguirla y reproducir el examen,
+entendiendo qué hace cada comando y qué resultado esperar.
 
 Cada sección de laboratorio termina con la lista de evidencias (capturas)
 que ese paso debe producir, y dónde guardarlas en el repositorio.
 
+**Nota sobre el entorno:** Lab 1 y Lab 2 (secciones 3 y 4) se ejecutaron en
+una instancia EC2 de AWS Educate. A mitad del examen, UPEU cerró el curso y
+la cuenta de AWS Educate quedó suspendida sin acceso — Lab 3 y Lab 4
+(secciones 5 y 6) se completaron en local, sobre este mismo equipo, en
+Docker/venv. El enunciado (`EvaluacionPractica.pdf`) deja explícito que AWS
+es solo una opción para quien no cuente con recursos suficientes en su
+propio equipo (mínimo 8 GB RAM / 4 vCPU / 50 GB disco); este equipo
+(CachyOS, 16 GB RAM, 16 núcleos, 250+ GB libres) supera ese mínimo, así que
+el cambio de entorno no afecta la validez de la entrega.
+
 ---
 
-## 0. Por qué este entorno: AWS en vez de una VM local
+## 0. Por qué se empezó en AWS en vez de una VM local
 
-Todo el examen corre en **una sola instancia EC2** (`t3.medium`, Ubuntu
-24.04) que aloja Wazuh, los scripts del Lab 1 y el dashboard del Lab 4; el
-Lab 3 (Machine Learning) se hace aparte en **Amazon SageMaker Studio Lab**,
-que es gratuito y no consume créditos de la instancia.
+Lab 1, Lab 2 y el dashboard del Lab 4 se planearon originalmente sobre
+**una sola instancia EC2** (`t3.medium`, Ubuntu 24.04); el Lab 3 (Machine
+Learning) se pensó aparte en **Amazon SageMaker Studio Lab**, gratuito y sin
+consumir créditos de la instancia.
 
-¿Por qué no montar todo en una máquina virtual local? Porque Wazuh
-All-in-One junto con su stack de búsqueda (OpenSearch/Elastic) necesita en
-la práctica 4 GB de RAM sostenidos, y en un sistema como CachyOS (Arch-based)
-levantar una VM con salida real a internet implica configurar primero la red
-NAT de libvirt:
+¿Por qué no montar todo en una máquina virtual local desde el principio?
+Porque Wazuh All-in-One junto con su stack de búsqueda (OpenSearch/Elastic)
+necesita en la práctica 4 GB de RAM sostenidos, y en un sistema como
+CachyOS (Arch-based) levantar una VM con salida real a internet implica
+configurar primero la red NAT de libvirt:
 
 ```bash
 sudo pacman -S qemu-full libvirt virt-manager dnsmasq iptables-nft
@@ -32,9 +41,12 @@ virsh net-start default            # activa la red NAT (DHCP/DNS automáticos)
 virsh net-autostart default
 ```
 
-Esto es opcional y solo hace falta si en algún momento quieres probar algo
-localmente antes de subirlo a la nube. El resto de esta guía asume que
-trabajas directamente sobre la instancia EC2.
+AWS evitaba ese paso por completo. Al cerrarse el acceso a AWS Educate
+(sección "Nota sobre el entorno" arriba), Lab 3 y Lab 4 se resolvieron sin
+VM: Docker directo sobre el host para Wazuh (Lab 4) y un `venv` de Python
+para el notebook (Lab 3) — ninguno de los dos necesita la red NAT de
+libvirt, así que el bloque de comandos de arriba nunca se usó en la
+práctica; queda documentado solo como contexto de la decisión original.
 
 ---
 
@@ -374,35 +386,75 @@ git push
 
 ---
 
-## 5. Laboratorio 3 — Detección de anomalías con ML (SageMaker Studio Lab)
+## 5. Laboratorio 3 — Detección de anomalías con ML (entorno local)
 
-Este laboratorio no se hace en la instancia EC2, sino en **SageMaker Studio
-Lab**, que es un entorno Jupyter gratuito de AWS (cuenta separada de AWS
-Educate, no consume créditos).
+> **Cambio de entorno:** la cuenta de AWS Educate quedó suspendida a mitad
+> del examen porque UPEU cerró el curso. El enunciado deja explícito que AWS
+> es solo una opción para quien no tenga recursos suficientes en su propio
+> equipo (mínimo 8 GB RAM / 4 vCPU / 50 GB disco) — este equipo (CachyOS,
+> 16 GB RAM, 16 núcleos, 250+ GB libres) supera ese mínimo con margen, así
+> que este laboratorio se ejecuta en un entorno Jupyter local en vez de
+> SageMaker Studio Lab. Todo lo que se instala aquí vive en un entorno
+> virtual de Python aislado, así que es completamente reversible: basta con
+> borrar la carpeta del venv para no dejar rastro en el sistema.
 
-### 5.1 Crear el entorno
+### 5.1 Crear el entorno virtual
 
-1. Regístrate en https://studiolab.sagemaker.aws/ con tu correo.
-2. Una vez aprobada la cuenta (puede tardar hasta un día la primera vez),
-   inicia un runtime de tipo **CPU** — el dataset es pequeño (10 000 filas) y
-   no necesita GPU.
-3. Desde la interfaz de JupyterLab, sube tres archivos a una carpeta
-   `lab3/` dentro del entorno:
-   - `deteccion_anomalias.ipynb` (ya está en el repositorio)
-   - `network_traffic.csv` (descárgalo del repo del curso, ruta
-     `examenfinal/lab3/network_traffic.csv`)
-   - `predecir.py` (ya está en el repositorio)
+Se crea el `venv` **fuera** del repositorio (en `~/venvs/`, por ejemplo), para
+no mezclar dependencias de Python con los archivos que se entregan:
 
-4. Abre una terminal dentro de Studio Lab e instala las dependencias:
-   ```bash
-   pip install pandas numpy matplotlib seaborn scikit-learn joblib
-   ```
+```bash
+python3 -m venv ~/venvs/examen-lab3
+source ~/venvs/examen-lab3/bin/activate
+pip install --upgrade pip
+pip install pandas numpy matplotlib seaborn scikit-learn joblib jupyter
+```
 
-### 5.2 Ejecutar el notebook
+El prompt de la terminal debería mostrar `(examen-lab3)` al inicio,
+confirmando que el entorno virtual está activo.
 
-Abre `deteccion_anomalias.ipynb` y ejecuta las celdas en orden, de arriba
-hacia abajo. El notebook está organizado en 4 bloques que corresponden a las
-4 tareas del laboratorio:
+### 5.2 Ejecutar el notebook completo desde la terminal
+
+En vez de ir haciendo clic celda por celda, se ejecuta el notebook entero de
+una sola vez con `nbconvert`, que corre todas las celdas en orden y guarda
+los resultados (gráficas, tablas, texto impreso) dentro del propio archivo
+`.ipynb`:
+
+```bash
+cd ~/Trabajos/ExamSeguridad/examen-practico
+jupyter nbconvert --to notebook --execute --inplace lab3/deteccion_anomalias.ipynb
+```
+
+El directorio de trabajo del kernel siempre es el directorio donde vive el
+`.ipynb` (`lab3/`), por eso dentro del notebook las rutas son relativas a
+esa carpeta (`network_traffic.csv`, no `lab3/network_traffic.csv`) — aunque
+el comando de arriba se lance desde la raíz del repo, `nbconvert` ejecuta el
+código como si estuvieras parado en `lab3/`.
+
+Si termina sin errores, el archivo `deteccion_anomalias.ipynb` queda
+sobrescrito con todas las salidas ya calculadas — gráficas incluidas. Esto
+también genera `lab3/modelo_anomalias.pkl` en el paso de exportación (última
+celda del notebook).
+
+### 5.3 Abrir el notebook para tomar las capturas
+
+Con los resultados ya calculados, solo falta visualizarlos para las
+evidencias:
+
+```bash
+jupyter notebook
+```
+
+Esto abre `http://localhost:8888` en el navegador. Entra a
+`lab3/deteccion_anomalias.ipynb` — vas a ver las 4 secciones ya ejecutadas,
+con sus gráficas y resultados, tal como quedaron guardados en el paso
+anterior (no hace falta volver a correr nada, aunque puedes hacerlo con
+"Run All" si prefieres verlo ejecutarse en vivo).
+
+### 5.4 Qué revisar en cada bloque para las capturas
+
+El notebook está organizado en 4 bloques que corresponden a las 4 tareas del
+laboratorio:
 
 - **Exploración y preprocesamiento:** carga el CSV, muestra estadísticas
   descriptivas, grafica histogramas de `bytes_sent` y `duration_sec`,
@@ -434,14 +486,26 @@ hacia abajo. El notebook está organizado en 4 bloques que corresponden a las
   scaler y la lista de features) en `lab3/modelo_anomalias.pkl` usando
   `joblib`.
 
-### 5.3 Descargar el modelo y probarlo con predecir.py
+### 5.5 Probar predecir.py con tráfico nuevo
 
-Desde Studio Lab, descarga `modelo_anomalias.pkl` a tu máquina y colócalo en
-`lab3/modelo_anomalias.pkl` dentro de tu copia local del repositorio (o
-súbelo también a la instancia EC2 si prefieres ejecutar `predecir.py` ahí).
+`modelo_anomalias.pkl` ya quedó guardado en `lab3/` desde el paso 5.2 (no
+hace falta descargarlo de ningún lado, todo corrió en la misma máquina).
+Para probarlo se necesita un CSV "nuevo" con el mismo formato de
+`network_traffic.csv` pero sin la columna `label` — se arma tomando una
+muestra del propio dataset (30 conexiones normales + 10 anómalas reales,
+mezcladas), justo para que `predecir.py` tenga algo que detectar:
 
 ```bash
-cd lab3
+cd ~/Trabajos/ExamSeguridad/examen-practico/lab3
+python3 -c "
+import pandas as pd
+df = pd.read_csv('network_traffic.csv')
+sample = pd.concat([
+    df[df['label']=='normal'].sample(30, random_state=1),
+    df[df['label']=='anomaly'].sample(10, random_state=1),
+]).drop(columns=['label']).sample(frac=1, random_state=1).reset_index(drop=True)
+sample.to_csv('nuevo_trafico.csv', index=False)
+"
 python3 predecir.py nuevo_trafico.csv
 ```
 
@@ -451,26 +515,121 @@ como anomalía, junto con su score.
 
 📸 Captura esa salida como `lab3/evidencias/SCR-3.4_predecir.png`.
 
-### 5.4 Cerrar el laboratorio
+### 5.6 Cerrar el laboratorio
+
+Sales del entorno virtual y confirmas que los artefactos entregables quedaron
+en su lugar (`deteccion_anomalias.ipynb` con salidas, `modelo_anomalias.pkl`,
+las 4 capturas en `lab3/evidencias/`):
 
 ```bash
+deactivate
 git add lab3/
-git commit -m "Lab3: modelo Isolation Forest entrenado, evaluado y exportado"
+git commit -m "Lab3: modelo Isolation Forest entrenado, evaluado y exportado (entorno local)"
 git push
 ```
 
 ---
 
-## 6. Laboratorio 4 — Dashboard SOC con OpenSearch Dashboards
+## 6. Laboratorio 4 — Dashboard SOC con OpenSearch Dashboards (Docker local)
 
-Se usa **OpenSearch Dashboards**, que ya viene incluido en la instalación
-All-in-One de Wazuh del paso 4.1 — no hay que instalar nada adicional, solo
-entrar a la URL que mostró el instalador (`https://<IP_PUBLICA>`) con el
-usuario `admin` y la contraseña que anotaste.
+> **Cambio de entorno:** igual que en el Lab 3, esto se hace en local en vez
+> de en la EC2 (cuenta AWS Educate suspendida). Se usa **OpenSearch
+> Dashboards** (opción C del enunciado), levantado con el proyecto oficial
+> `wazuh-docker` en modo `single-node`, que trae en tres contenedores
+> Manager + Indexer (OpenSearch) + Dashboard — el mismo stack que traía la
+> instalación All-in-One de la EC2, solo que ahora corre sobre Docker en
+> este equipo. Todo queda contenido en contenedores y volúmenes de Docker:
+> `docker compose down -v` al terminar borra absolutamente todo sin dejar
+> nada instalado en el sistema.
 
-### 6.1 Conectar la fuente de datos
+### 6.1 Levantar el stack de Wazuh con Docker
 
-1. Entra al dashboard y ve a **Stack Management → Index Patterns**.
+El repositorio `wazuh-docker` es infraestructura para correr el servicio,
+no un entregable del examen — se clona **fuera** de `examen-practico`, en
+una carpeta aparte:
+
+```bash
+cd ~
+git clone https://github.com/wazuh/wazuh-docker.git -b v4.14.0
+cd wazuh-docker/single-node
+```
+
+Antes de levantar los contenedores hay que generar los certificados TLS que
+usan el Indexer y el Dashboard para hablar entre sí (paso único, se corre
+una sola vez):
+
+```bash
+docker compose -f generate-indexer-certs.yml run --rm generator
+```
+
+Y ahora sí, se levanta el stack completo:
+
+```bash
+docker compose up -d
+```
+
+La primera vez tarda varios minutos en descargar las imágenes. Verifica que
+los tres contenedores queden arriba:
+
+```bash
+docker compose ps
+```
+
+Deberías ver `wazuh.manager`, `wazuh.indexer` y `wazuh.dashboard` con estado
+`Up`/`healthy`. El dashboard queda expuesto en `https://localhost:443`, con
+el usuario `admin` y la contraseña por defecto del proyecto (`SecretPassword`
+en versiones recientes — el propio `docker-compose.yml` del proyecto la
+indica; cámbiala si vas a dejar esto corriendo un tiempo).
+
+📸 Captura `docker compose ps` con los tres contenedores en estado `Up` como
+`lab4/evidencias/SCR-4.0_stack_activo.png` (evidencia adicional, no pedida
+literal por el enunciado pero útil para documentar el entorno en el
+README).
+
+### 6.2 Reaplicar las reglas del Lab 2 y generar alertas de prueba
+
+El manager de Docker arranca con las reglas por defecto — no trae las
+reglas custom que ya hiciste en el Lab 2. Se copian dentro del contenedor:
+
+```bash
+docker cp ~/Trabajos/ExamSeguridad/examen-practico/lab2/local_rules_ssh.xml wazuh-single-node-wazuh.manager-1:/var/ossec/etc/rules/
+docker cp ~/Trabajos/ExamSeguridad/examen-practico/lab2/local_rules_exfil.xml wazuh-single-node-wazuh.manager-1:/var/ossec/etc/rules/
+docker exec wazuh-single-node-wazuh.manager-1 /var/ossec/bin/wazuh-analysisd -t
+docker restart wazuh-single-node-wazuh.manager-1
+```
+
+(el nombre exacto del contenedor puede variar levemente según la versión de
+Docker Compose — confírmalo con `docker compose ps` si el `docker cp`
+falla).
+
+El manager, por defecto, ya se monitorea a sí mismo como agente local, así
+que para generar tráfico de alertas basta con inyectar eventos `Failed
+password` directamente dentro del contenedor, con el mismo mecanismo que
+usa `simular_bruteforce.sh` pero apuntando al log que el manager vigila
+dentro de sí mismo:
+
+```bash
+for i in $(seq 1 15); do
+  docker exec wazuh-single-node-wazuh.manager-1 logger -p auth.warning -t sshd \
+    "Failed password for testuser from 45.33.32.156 port $((RANDOM % 60000 + 1024)) ssh2"
+  sleep 0.4
+done
+```
+
+Espera unos segundos y confirma que la regla `100051` (fuerza bruta) se
+disparó:
+
+```bash
+docker exec wazuh-single-node-wazuh.manager-1 tail -n 50 /var/ossec/logs/alerts/alerts.log | grep -A5 100051
+```
+
+Con esto ya hay datos reales en el índice `wazuh-alerts-*` para construir
+las visualizaciones del dashboard.
+
+### 6.3 Conectar la fuente de datos
+
+1. Entra a `https://localhost:443` (acepta el certificado autofirmado) y ve
+   a **Stack Management → Index Patterns**.
 2. Crea un index pattern llamado `wazuh-alerts-*` (apunta a los índices que
    genera el propio Wazuh con cada alerta).
 3. Ve a **Discover** y filtra por las últimas 24 horas para confirmar que
@@ -481,7 +640,7 @@ usuario `admin` y la contraseña que anotaste.
 📸 Captura la interfaz con la fuente de datos conectada y al menos un evento
 visible como `lab4/evidencias/SCR-4.1_fuente_datos.png`.
 
-### 6.2 Crear las 4 visualizaciones
+### 6.4 Crear las 4 visualizaciones
 
 Desde **Visualize → Create visualization**, crea estas cuatro:
 
@@ -497,7 +656,7 @@ Guarda cada una con un nombre descriptivo.
 📸 Captura las 4 (en un collage o una por una, con nombres
 `SCR-4.2a`...`SCR-4.2d`) y guárdalas en `lab4/evidencias/`.
 
-### 6.3 Armar el dashboard integrado
+### 6.5 Armar el dashboard integrado
 
 1. Ve a **Dashboard → Create new dashboard**.
 2. Añade las 4 visualizaciones del paso anterior.
@@ -515,7 +674,7 @@ Guarda cada una con un nombre descriptivo.
 📸 Captura el dashboard completo, con el nombre y los datos del autor
 visibles, como `lab4/evidencias/SCR-4.3_dashboard.png`.
 
-### 6.4 Configurar una alerta de umbral
+### 6.6 Configurar una alerta de umbral
 
 En **Stack Management → Alerting**, crea una regla de tipo threshold:
 
@@ -526,18 +685,26 @@ En **Stack Management → Alerting**, crea una regla de tipo threshold:
 📸 Captura la regla configurada (con umbral, condición y acción visibles)
 como `lab4/evidencias/SCR-4.4_alerta.png`.
 
-### 6.5 Cerrar el laboratorio
+### 6.7 Cerrar el laboratorio
 
 ```bash
-cd ~/examen-practico
+cd ~/Trabajos/ExamSeguridad/examen-practico
 cat > lab4/evidencias/herramienta_usada.txt << 'EOF'
-OpenSearch Dashboards (incluido en Wazuh 4.x All-in-One)
-URL: https://<IP_PUBLICA>
+OpenSearch Dashboards (wazuh-docker v4.14.0, single-node, local)
+URL: https://localhost:443
 EOF
 
 git add lab4/
-git commit -m "Lab4: dashboard SOC en OpenSearch Dashboards con 4 visualizaciones y alerta"
+git commit -m "Lab4: dashboard SOC en OpenSearch Dashboards (Docker local) con 4 visualizaciones y alerta"
 git push
+```
+
+Cuando ya no lo necesites, puedes apagar y borrar por completo el stack de
+Docker (no es parte de la entrega, solo la infraestructura para generarla):
+
+```bash
+cd ~/wazuh-docker/single-node
+docker compose down -v
 ```
 
 ---
@@ -546,15 +713,19 @@ git push
 
 Repasa esto una última vez antes de pushear el commit final:
 
-- El `README.md` tiene las versiones reales instaladas (no placeholders) y
-  el ID de la instancia, región y AMI usados.
+- El `README.md` tiene las versiones reales instaladas (no placeholders), el
+  ID de instancia/región/AMI usados para Lab 1-2 (AWS) y una nota explicando
+  el cambio a entorno local para Lab 3-4 (cuenta AWS Educate suspendida por
+  cierre del curso — cambio amparado en la sección "Modalidad AWS Education"
+  del enunciado, que la marca como opcional).
 - Cada carpeta `evidencias/` tiene todos los screenshots que le
   corresponden, con el nombre exacto que pide la tabla del enunciado
   (prefijo `SCR-<lab>.<tarea>_<descripcion>.png`, todo en minúsculas y sin
   espacios).
-- Todos los screenshots muestran la fecha/hora del sistema y el
-  hostname/IP de la instancia EC2 (o la URL del servicio) en el prompt o en
-  la barra de título — es la prueba de que el trabajo se hizo en la nube.
+- Los screenshots de Lab 1-2 muestran el hostname/IP de la instancia EC2 en
+  el prompt; los de Lab 3-4 muestran la fecha/hora del sistema y el
+  hostname de este equipo (o `localhost` para el dashboard) — es la prueba
+  de que el trabajo se hizo realmente, ya sea en la nube o en local.
 - El historial de commits muestra trabajo distribuido en el tiempo, no todo
   en un único commit al final.
 - `git push` final hecho y el repositorio visible públicamente (o con el
